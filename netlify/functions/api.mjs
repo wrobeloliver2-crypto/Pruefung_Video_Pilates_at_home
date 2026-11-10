@@ -67,7 +67,7 @@ async function statusJeUebung(nurReviewer) {
     voll AS (SELECT exercise_id, count(DISTINCT art) FILTER (WHERE art IN ('bild_start','bild_ende','video','voice')) AS n FROM a GROUP BY exercise_id),
     entsch AS (
       SELECT DISTINCT ON (r.asset_id) r.asset_id, r.entscheidung FROM review r ORDER BY r.asset_id, r.zeitstempel DESC)
-    SELECT e.id, e.name, e.modus, e.phase,
+    SELECT e.id, e.name, e.modus, e.phase, b.video_status, b.voice_status, COALESCE(b.video_da,false) AS video_da, COALESCE(b.voice_da,false) AS voice_da,
       COALESCE(v.n,0) AS vorhanden,
       asg.reviewer_id, rv.name AS pruefer,
       COALESCE(count(a.id) FILTER (WHERE a.art IN ('bild_start','bild_ende','video','voice')),0) AS inhalte,
@@ -76,12 +76,13 @@ async function statusJeUebung(nurReviewer) {
       count(en.asset_id) FILTER (WHERE en.entscheidung='aenderung') AS aenderung
     FROM exercise e
     LEFT JOIN voll v ON v.exercise_id = e.id
+    LEFT JOIN bestand b ON b.exercise_id = e.id
     LEFT JOIN assignment asg ON asg.exercise_id = e.id AND asg.aktiv
     LEFT JOIN reviewer rv ON rv.id = asg.reviewer_id
     LEFT JOIN a ON a.exercise_id = e.id
     LEFT JOIN entsch en ON en.asset_id = a.id
     ${nurReviewer ? 'WHERE asg.reviewer_id = $1' : ''}
-    GROUP BY e.id, e.name, e.modus, e.phase, v.n, asg.reviewer_id, rv.name, e.reihenfolge
+    GROUP BY e.id, e.name, e.modus, e.phase, b.video_status, b.voice_status, b.video_da, b.voice_da, v.n, asg.reviewer_id, rv.name, e.reihenfolge
     ORDER BY e.reihenfolge NULLS LAST, e.name`, nurReviewer ? [nurReviewer] : []);
   return rows.map(r => ({ ...r, vorhanden: Number(r.vorhanden), inhalte: Number(r.inhalte), ok: Number(r.ok), aenderung: Number(r.aenderung), pruefbar: Number(r.vorhanden) === 4 }));
 }
