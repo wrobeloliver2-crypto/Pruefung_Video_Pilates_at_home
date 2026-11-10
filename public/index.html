@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Prüfung · Pilates @home</title>
+<style>
+:root{--bg:#faf8f4;--card:#fff;--ink:#2b2b28;--mute:#6f6c66;--line:#e5e0d8;--accent:#c8818c;--on:#fff;--ok:#2d5016;--warn:#a4571b;--err:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#1d1c1a;--card:#262522;--ink:#f1eee8;--mute:#a9a49b;--line:#3a3834;--accent:#d99aa4;--on:#1d1c1a;--ok:#8fc16a;--warn:#e0a070;--err:#f2928b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px max(16px,env(safe-area-inset-right)) 48px max(16px,env(safe-area-inset-left))}
+main{max-width:860px;margin:0 auto}
+h1{font-size:22px;margin:8px 0 4px}h2{font-size:18px;margin:24px 0 8px}
+.mute{color:var(--mute);font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:10px 0}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.grow{flex:1;min-width:0}
+button,select,textarea{font:inherit;color:inherit}
+button{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 14px;cursor:pointer;min-height:44px}
+button.pri{background:var(--accent);color:var(--on);border-color:var(--accent);font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+select,textarea{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px}
+textarea{min-height:84px}
+.tag{display:inline-block;border-radius:999px;padding:2px 10px;font-size:13px;border:1px solid var(--line)}
+.ok{color:var(--ok);border-color:var(--ok)}.aend{color:var(--warn);border-color:var(--warn)}.err{color:var(--err)}
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}.bar>i{display:block;height:100%;background:var(--ok)}
+.platz{border:1px dashed var(--line);border-radius:10px;padding:24px 10px;text-align:center;color:var(--mute);font-size:14px}
+a.li{display:block;text-decoration:none;color:inherit}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.tabs button[aria-pressed=true]{background:var(--accent);color:var(--on);border-color:var(--accent)}
+</style>
+</head>
+<body>
+<main id="app"><p class="mute">Lade …</p></main>
+<script>
+const API='/api';let TOKEN='';let ME=null;
+try{const m=location.hash.match(/ma=([^&]+)/);if(m){TOKEN=decodeURIComponent(m[1]);sessionStorage.setItem('pp_t',TOKEN);history.replaceState(null,'',location.pathname)}else TOKEN=sessionStorage.getItem('pp_t')||''}catch(e){}
+const $=s=>document.querySelector(s);const app=$('#app');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function call(action,data){
+  try{const r=await fetch(API,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,data,token:TOKEN})});
+    const j=await r.json().catch(()=>({error:'antwort'}));return {status:r.status,...j}}
+  catch(e){return {status:0,error:'netz'}}
+}
+const ART={bild_start:'Bild Start',bild_ende:'Bild Ende',video:'Video',voice:'Voice'};
+function fehlerSeite(txt){app.innerHTML=`<h1>Prüfung</h1><div class="card"><p>${esc(txt)}</p><p class="mute">Bitte über die Kachel „Prüfung“ im Portal öffnen. Der Fehler wurde gemeldet.</p></div>`}
+async function start(){
+  if(!TOKEN){await call('fehlerMelden',{art:'kein_zugang',details:'ohne Portal-Anmeldung geöffnet'});return fehlerSeite('Kein Zugang.')}
+  const me=await call('me');
+  if(me.status===401){return fehlerSeite('Kein Zugang oder Anmeldung abgelaufen.')}
+  if(me.error){return fehlerSeite('Der Dienst antwortet gerade nicht.')}
+  ME=me;ME.rolle==='admin'?admin():liste();
+}
+async function liste(){
+  const r=await call('liste');if(r.error)return fehlerSeite('Die Liste lässt sich nicht laden.');
+  const u=r.uebungen;const fertig=u.filter(x=>x.ok===4).length;
+  app.innerHTML=`<h1>Hallo ${esc(ME.name)}</h1><p class="mute">${fertig} von ${u.length} Übungen vollständig freigegeben</p>
+  <div class="bar"><i style="width:${u.length?100*fertig/u.length:0}%"></i></div>
+  ${u.length?'':'<div class="card">Noch nichts zur Prüfung zugewiesen.</div>'}
+  ${u.map(x=>`<a class="li card" href="#u/${esc(x.id)}"><div class="row"><div class="grow"><b>${esc(x.name)}</b><div class="mute">${esc(x.modus||'')} ${esc(x.phase||'')}</div></div>
+   <span class="tag ok">${x.ok}/4 OK</span>${x.aenderung?`<span class="tag aend">${x.aenderung} Änderung</span>`:''}</div></a>`).join('')}`;
+}
+async function uebung(id){
+  const r=await call('uebung',{id});if(r.error)return fehlerSeite('Die Übung lässt sich nicht laden.');
+  const order=['bild_start','bild_ende','video','voice'];
+  const by=Object.fromEntries(r.inhalte.map(i=>[i.art,i]));
+  app.innerHTML=`<p><a href="#" id="zur">← Übersicht</a></p><h1>${esc(r.uebung.name)}</h1><p class="mute">${esc(r.uebung.modus||'')} ${esc(r.uebung.phase||'')}</p>
+  ${order.map(a=>{const i=by[a];if(!i)return`<div class="card"><b>${ART[a]}</b><div class="platz">fehlt noch</div></div>`;
+   return`<div class="card" data-id="${i.id}"><div class="row"><b class="grow">${ART[a]} <span class="mute">v${i.version}</span></b>
+    ${i.entscheidung==='ok'?'<span class="tag ok">OK · gesperrt</span>':i.entscheidung==='aenderung'?'<span class="tag aend">Änderung gewünscht</span>':''}</div>
+    ${i.hinweis?`<p class="mute">Bekannter Hinweis: ${esc(i.hinweis)}</p>`:''}
+    <div class="platz">${i.im_speicher?'Medium wird geladen …':'Medium ist noch nicht im Prüfspeicher'}</div>
+    ${i.gesperrt?'':`<div class="row" style="margin-top:10px"><button class="pri ok-btn">OK</button><span class="mute">oder Änderung beschreiben:</span></div>
+     <textarea placeholder="Was soll geändert werden?">${esc(i.entscheidung==='aenderung'?i.kommentar:'')}</textarea>
+     <button class="aend-btn" style="margin-top:8px">Änderung senden</button><span class="err msg"></span>`}</div>`}).join('')}`;
+  $('#zur').onclick=e=>{e.preventDefault();location.hash=''};
+  app.querySelectorAll('.card[data-id]').forEach(c=>{
+    const id=Number(c.dataset.id);const msg=c.querySelector('.msg');
+    const senden=async(ent,txt)=>{const x=await call('entscheiden',{assetId:id,entscheidung:ent,kommentar:txt});
+      if(x.error){msg.textContent=x.error==='text_noetig'?' Bitte Text eingeben.':' Speichern nicht möglich.';if(x.error!=='text_noetig')call('fehlerMelden',{art:'speicher_fehler',details:'entscheiden '+x.error});return}
+      route()};
+    const ok=c.querySelector('.ok-btn');if(ok)ok.onclick=()=>senden('ok');
+    const ae=c.querySelector('.aend-btn');if(ae)ae.onclick=()=>senden('aenderung',c.querySelector('textarea').value);
+  });
+}
+let TAB='fortschritt';
+async function admin(){
+  const r=await call('adminUebersicht');if(r.error)return fehlerSeite('Die Übersicht lässt sich nicht laden.');
+  const u=r.uebungen;const voll=u.filter(x=>x.pruefbar);
+  const je=r.pruefer.map(p=>{const z=u.filter(x=>x.reviewer_id===p.id);return{name:p.name,zug:z.length,fertig:z.filter(x=>x.ok===4).length,aend:z.filter(x=>x.aenderung>0).length}});
+  const tabs=[['fortschritt','Fortschritt'],['zuweisen','Aufträge'],['aenderung',`Änderungen (${r.aenderungen.length})`],['fehler',`Fehler (${r.fehler.length})`]];
+  let body='';
+  if(TAB==='fortschritt')body=`<div class="card"><b>Gesamt</b><div class="mute">${voll.length} von ${u.length} Übungen vollständig und prüfbar · ${u.filter(x=>x.ok===4).length} freigegeben</div></div>
+   ${je.map(p=>`<div class="card"><div class="row"><b class="grow">${esc(p.name)}</b><span class="mute">${p.fertig}/${p.zug} geprüft · ${p.aend} mit Änderung</span></div><div class="bar"><i style="width:${p.zug?100*p.fertig/p.zug:0}%"></i></div></div>`).join('')}
+   <h2>Unvollständige Sets</h2>${u.filter(x=>!x.pruefbar).map(x=>`<div class="card"><b>${esc(x.name)}</b> <span class="mute">${x.vorhanden}/4 Inhalte</span></div>`).join('')||'<p class="mute">Alle Übungen vollständig.</p>'}`;
+  if(TAB==='zuweisen')body=`<p class="mute">Nur vollständige Übungen können geprüft werden.</p>`+u.map(x=>`<div class="card"><div class="row"><div class="grow"><b>${esc(x.name)}</b> <span class="mute">${x.vorhanden}/4</span></div>
+    <select data-e="${esc(x.id)}" style="width:auto"><option value="0">nicht zugewiesen</option>${r.pruefer.map(p=>`<option value="${p.id}" ${x.reviewer_id===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div></div>`).join('');
+  if(TAB==='aenderung')body=r.aenderungen.map(a=>`<div class="card"><b>${esc(a.uebung)}</b> · ${ART[a.art]||esc(a.art)} v${a.version}<div>${esc(a.kommentar)}</div><div class="mute">${esc(a.pruefer)} · ${new Date(a.zeitstempel).toLocaleString('de-DE')}</div></div>`).join('')||'<p class="mute">Keine offenen Änderungswünsche.</p>';
+  if(TAB==='fehler')body=r.fehler.map(f=>`<div class="card"><div class="row"><b class="grow">${esc(f.art)}</b><button data-f="${f.id}">erledigt</button></div><div class="mute">${new Date(f.zeitpunkt).toLocaleString('de-DE')} ${esc(f.exercise_id||'')}</div><div>${esc(f.details||'')}</div></div>`).join('')||'<p class="mute">Keine offenen Fehler.</p>';
+  app.innerHTML=`<h1>Prüfung · Admin</h1><div class="tabs">${tabs.map(([k,l])=>`<button data-t="${k}" aria-pressed="${TAB===k}">${l}</button>`).join('')}</div>${body}`;
+  app.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;admin()});
+  app.querySelectorAll('select[data-e]').forEach(s=>s.onchange=async()=>{await call('zuweisen',{exerciseId:s.dataset.e,reviewerId:Number(s.value)});admin()});
+  app.querySelectorAll('[data-f]').forEach(b=>b.onclick=async()=>{await call('fehlerErledigt',{id:Number(b.dataset.f)});admin()});
+}
+function route(){if(!ME)return;if(ME.rolle==='admin')return admin();const m=location.hash.match(/^#u\/(.+)$/);m?uebung(decodeURIComponent(m[1])):liste()}
+window.addEventListener('hashchange',route);
+setInterval(()=>{if(ME&&ME.rolle==='admin'&&document.visibilityState==='visible')admin()},30000);
+start();
+</script>
+</body>
+</html>
