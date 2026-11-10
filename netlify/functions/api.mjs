@@ -1,9 +1,33 @@
 // Prüfprogramm Pilates @home – eine Function für alles.
 // Anmeldung: Portal-Token (aus #ma=…) wird beim Mitarbeiter-Dienst geprüft. Kein eigenes Passwort.
 import { neon } from '@neondatabase/serverless';
+import { createHmac, createHash } from 'node:crypto';
 
 const sql = neon(process.env.DATABASE_URL);
 const MA_URL = 'https://mitarbeiter-api.netlify.app/.netlify/functions/auth';
+const ARTEN = ['bild_start', 'bild_ende', 'video', 'voice'];
+
+// ── Abspiel-Links für den Prüfspeicher (S3-kompatibel, nur Lesen, 1 Stunde gültig) ──
+const BUCKET = 'pruefmedien';
+const REGION = 'eu-central-1';
+const hmac = (k, d) => createHmac('sha256', k).update(d).digest();
+const enc = (s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+function lesenUrl(key, sek = 3600) {
+  const ep = process.env.S3_ENDPOINT, ak = process.env.S3_ACCESS_KEY, sk = process.env.S3_SECRET_KEY;
+  if (!ep || !ak || !sk) return null;
+  const host = new URL(ep).host;
+  const t = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const tag = t.slice(0, 8);
+  const scope = `${tag}/${REGION}/s3/aws4_request`;
+  const pfad = '/' + BUCKET + '/' + key.split('/').map(enc).join('/');
+  const q = { 'X-Amz-Algorithm': 'AWS4-HMAC-SHA256', 'X-Amz-Credential': `${ak}/${scope}`, 'X-Amz-Date': t, 'X-Amz-Expires': String(sek), 'X-Amz-SignedHeaders': 'host' };
+  const qs = Object.keys(q).sort().map((k) => `${enc(k)}=${enc(q[k])}`).join('&');
+  const canon = ['GET', pfad, qs, `host:${host}\n`, 'host', 'UNSIGNED-PAYLOAD'].join('\n');
+  const sts = ['AWS4-HMAC-SHA256', t, scope, createHash('sha256').update(canon).digest('hex')].join('\n');
+  const kk = hmac(hmac(hmac(hmac('AWS4' + sk, tag), REGION), 's3'), 'aws4_request');
+  const sig = createHmac('sha256', kk).update(sts).digest('hex');
+  return `${ep.replace(/\/$/, '')}${pfad}?${qs}&X-Amz-Signature=${sig}`;
+}
 
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 
@@ -95,12 +119,13 @@ export default async (req) => {
         }
         const ex = (await sql`SELECT id, name, modus, phase FROM exercise WHERE id = ${eid}`)[0];
         if (!ex) return json(404, { error: 'unbekannt' });
-        const assets = await sql.query(`WITH a AS (${NEUESTE}) SELECT a.id, a.art, a.version, a.dateiname, a.hinweis, a.storage_key IS NOT NULL AS im_speicher,
+        const assets = await sql.query(`WITH a AS (${NEUESTE}) SELECT a.id, a.art, a.version, a.dateiname, a.hinweis, a.storage_key IS NOT NULL AS im_speicher, a.storage_key,
           (SELECT entscheidung FROM review r WHERE r.asset_id = a.id ORDER BY zeitstempel DESC LIMIT 1) AS entscheidung,
           (SELECT kommentar FROM review r WHERE r.asset_id = a.id ORDER BY zeitstempel DESC LIMIT 1) AS kommentar,
           EXISTS (SELECT 1 FROM asset_lock l WHERE l.asset_id = a.id) AS gesperrt
           FROM a WHERE a.exercise_id = $1`, [eid]);
-        return json(200, { uebung: ex, inhalte: assets });
+        const inhalte = assets.map(({ storage_key, ...i }) => ({ ...i, url: storage_key ? lesenUrl(storage_key) : null }));
+        return json(200, { uebung: ex, inhalte });
       }
 
       case 'entscheiden': {
