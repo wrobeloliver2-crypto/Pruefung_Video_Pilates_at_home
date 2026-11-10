@@ -128,7 +128,9 @@ export default async (req) => {
           EXISTS (SELECT 1 FROM asset_lock l WHERE l.asset_id = a.id) AS gesperrt
           FROM a WHERE a.exercise_id = $1`, [eid]);
         const inhalte = assets.map(({ storage_key, ...i }) => ({ ...i, url: storage_key ? lesenUrl(storage_key) : null }));
-        return json(200, { uebung: ex, inhalte });
+        const zaehl = {};
+        for (const k of ['z1','z2','z3','z4','z5','z6','z7','z8','z9','z10','s1','s2']) zaehl[k.replace(/^z/, '')] = lesenUrl('zaehlen/' + k + '.mp3');
+        return json(200, { uebung: ex, inhalte, zaehl });
       }
 
       case 'entscheiden': {

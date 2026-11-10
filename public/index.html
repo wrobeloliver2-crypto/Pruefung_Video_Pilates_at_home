@@ -32,6 +32,7 @@ a.li{display:block;text-decoration:none;color:inherit}
 .med{width:100%;max-height:70vh;border-radius:10px;background:#000;object-fit:contain;display:block}
 img.med{background:var(--line)}audio{width:100%}
 .mo{font-weight:600;border-color:transparent;color:#fff}.mo-Matte{background:#5b7f95}.mo-Stand{background:#7a8f4e}.mo-Reformer{background:#a8667a}
+.probe .zl{font-size:28px;font-weight:700;margin:6px 0}.probe .zl small{font-size:14px;font-weight:400;color:var(--mute)}
 .pl{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.pl button[aria-pressed=true]{background:var(--accent);color:var(--on);border-color:var(--accent)}
 </style>
 </head>
@@ -94,11 +95,85 @@ function pingpong(card){
   play.onclick=()=>{if(state==='stop'){v.currentTime=0;play.textContent='■ Stopp';vor()}else stop()};
   card.querySelectorAll('.pp-sp').forEach(b=>b.onclick=()=>{speed=Number(b.dataset.s);v.playbackRate=speed;card.querySelectorAll('.pp-sp').forEach(x=>x.setAttribute('aria-pressed',x===b))});
 }
+// ───────── Probelauf: Voice, Video und Zählen zusammen, wie in der App ─────────
+let TAKT=null,PROBE_STOP=null;
+const takt=async id=>{if(!TAKT){try{TAKT=await (await fetch('/takt.json')).json()}catch(e){TAKT={}}}return TAKT[id]||null};
+function probeKarte(by,t){
+  if(!by.video||!by.voice||!by.video.url)return'';
+  const z=t&&t.sek;
+  return`<div class="card probe"><b>Probelauf: Voice, Video und Zählen zusammen</b>
+   <p class="mute">So läuft es in der App: erst die Stimme (Ansage, Info, Hinweis, Startposition), dann Bewegung und Zählen im festen Takt. Prüfe: Passt die Stimme zur Übung? Stimmt die Anzahl? Passt jede Zahl zur Bewegung?</p>
+   <video class="med" id="pv" muted playsinline preload="auto" src="${esc(by.video.url)}"></video>
+   <div class="zl" id="pz">&nbsp;</div><div class="mute" id="pi"></div>
+   <div class="pl"><button class="pri" id="pgo">▶ Probelauf starten</button><button id="pskip">Voice überspringen</button></div>
+   <div style="margin-top:10px"><label>Tempo der Bewegung: <b id="ptv">1,00×</b> <span class="mute">(langsamer ← → schneller)</span></label>
+    <input type="range" id="pt" min="0.5" max="1.5" step="0.05" value="1" style="width:100%">
+    ${z?`<button id="pfit" style="margin-top:6px">Tempo an den Zähltakt anpassen</button>`:''}</div>
+   ${z?`<div class="row" style="margin-top:10px"><label>Wiederholungen <input type="number" id="pr" min="1" max="30" value="${t.reps}" style="width:80px"></label>
+    <label>Sekunden je Wiederholung <input type="number" id="ps" min="2" max="30" step="0.5" value="${String(t.sek)}" style="width:80px"></label>
+    <span class="mute">Standard: ${t.reps} × ${String(t.sek).replace('.',',')} s</span></div>
+   <button id="pnote" style="margin-top:8px">Diese Werte als Änderungswunsch beim Video eintragen</button>`:''}</div>`;
+}
+async function probe(id,by,t){
+  const go=$('#pgo');if(!go)return;
+  const v=$('#pv'),z=$('#pz'),inf=$('#pi'),tr=$('#pt'),tv=$('#ptv');
+  const rueck=!!by.video.video_mit_rueck;
+  const rate=()=>Number(tr.value);
+  const zyk=()=>v.duration?(rueck?v.duration:2*v.duration):0;
+  const sek=()=>t&&t.sek?Number($('#ps').value)||t.sek:0;
+  const reps=()=>t&&t.sek?Number($('#pr').value)||t.reps:0;
+  const info=()=>{const c=zyk()/rate();
+    inf.textContent=t&&t.sek?`${t.text} · Zähltakt ${String(sek()).replace('.',',')} s`+(c?` · ein Hin und Zurück dauert bei diesem Tempo ${c.toFixed(1).replace('.',',')} s`:''):(t?`${t.text} · kein Zähltakt (fester Ablauf)`:'')};
+  const setRate=()=>{tv.textContent=rate().toFixed(2).replace('.',',')+'×';v.playbackRate=rate();info()};
+  v.addEventListener('loadedmetadata',info);
+  tr.oninput=setRate;setRate();
+  const pf=$('#pfit');if(pf)pf.onclick=()=>{const q=zyk()/sek();tr.value=Math.min(1.5,Math.max(0.5,Math.round(q*20)/20));setRate()};
+  ['#pr','#ps'].forEach(q=>{const e=$(q);if(e)e.oninput=info});
+  const pn=$('#pnote');if(pn)pn.onclick=()=>{
+    const ta=app.querySelector('.card[data-id] textarea');const c=[...app.querySelectorAll('.card[data-id]')].find(x=>x.querySelector('video'));const tx=c&&c.querySelector('textarea');
+    if(tx){tx.value=`Takt: ${reps()} Wiederholungen, ${String(sek()).replace('.',',')} Sekunden je Wiederholung; Bewegung im Tempo ${rate().toFixed(2).replace('.',',')}×.`;tx.scrollIntoView({block:'center'});tx.focus()}};
+  let st=null,ZA=null;
+  if(window.ZA_URL){ZA={};for(const k in window.ZA_URL){const a=new Audio(window.ZA_URL[k]);a.preload='auto';ZA[k]=a}}
+  const stop=()=>{if(st){st.timers.forEach(clearTimeout);st.auds.forEach(a=>{try{a.pause()}catch(e){}})}st=null;v.pause();v.loop=false;v.onended=null;go.textContent='▶ Probelauf starten';z.innerHTML='&nbsp;'};
+  PROBE_STOP=stop;
+  const spiele=key=>{const a=ZA&&ZA[key];if(!a)return;try{a.currentTime=0;a.play().catch(()=>{})}catch(e){}};
+  const bewegung=()=>{
+    v.currentTime=0;v.playbackRate=rate();
+    if(rueck){v.loop=true;v.play().catch(()=>{});return}
+    let mode='vor',last=0;
+    const vor=()=>{mode='vor';v.playbackRate=rate();v.play().catch(()=>{})};
+    v.onended=()=>{if(!st||mode!=='vor')return;mode='rueck';v.pause();last=performance.now();requestAnimationFrame(tick)};
+    const tick=n=>{if(!st||mode!=='rueck')return;const dt=(n-last)/1000;last=n;v.currentTime=Math.max(0,v.currentTime-dt*rate());if(v.currentTime<=0.02){v.currentTime=0;vor();return}requestAnimationFrame(tick)};
+    vor();
+  };
+  const zaehlen=s=>{
+    bewegung();
+    if(!t||!t.sek){z.textContent='Kein Zähltakt – Video läuft';return}
+    const R=reps(),S=sek(),n=t.seiten;let zeit=0;
+    for(let sd=1;sd<=n;sd++){
+      if(n>1){s.timers.push(setTimeout(()=>{if(st===s)spiele('s'+sd)},zeit*1000));zeit+=2.2}
+      for(let k=1;k<=R;k++){const kz=zeit;
+        s.timers.push(setTimeout(()=>{if(st!==s)return;z.innerHTML=`${k} <small>von ${R}${n>1?' · Seite '+sd+' von 2':''}</small>`;spiele(String(k))},kz*1000));
+        zeit+=S}
+    }
+    s.timers.push(setTimeout(()=>{if(st===s)stop()},(zeit+1)*1000));
+  };
+  const start=mitVoice=>{
+    stop();const s=st={timers:[],auds:[]};go.textContent='■ Stopp';
+    const vo=by.voice.url;
+    if(mitVoice&&vo){z.textContent='Stimme läuft …';const a=new Audio(vo);s.auds.push(a);a.onended=()=>{if(st===s)zaehlen(s)};a.onerror=()=>{if(st===s)zaehlen(s)};a.play().catch(()=>zaehlen(s))}
+    else zaehlen(s);
+  };
+  go.onclick=()=>{st?stop():start(true)};
+  $('#pskip').onclick=()=>start(false);
+}
 async function uebung(id){
   const r=await call('uebung',{id});if(r.error)return fehlerSeite('Die Übung lässt sich nicht laden.');
   const order=['bild_start','bild_ende','video','voice'];
   const by=Object.fromEntries(r.inhalte.map(i=>[i.art,i]));
+  const TK=await takt(r.uebung.id);window.ZA_URL=r.zaehl||null;
   app.innerHTML=`<p><a href="#" id="zur">← Übersicht</a></p><h1>${esc(r.uebung.name)}</h1><p class="row" style="gap:6px">${mtag(r.uebung.modus)}<span class="mute">${esc(r.uebung.phase||'')}</span></p>
+  ${probeKarte(by,TK)}
   ${order.map(a=>{const i=by[a];if(!i)return`<div class="card"><b>${ART[a]}</b><div class="platz">fehlt noch</div></div>`;
    return`<div class="card" data-id="${i.id}"><div class="row"><b class="grow">${ART[a]} <span class="mute">v${i.version}</span></b>
     ${i.entscheidung==='ok'?'<span class="tag ok">OK · gesperrt</span>':i.entscheidung==='aenderung'?'<span class="tag aend">Änderung gewünscht</span>':''}</div>
@@ -109,6 +184,7 @@ async function uebung(id){
      <textarea placeholder="Was soll geändert werden?">${esc(i.entscheidung==='aenderung'?i.kommentar:'')}</textarea>
      <button class="aend-btn" style="margin-top:8px">Änderung senden</button><span class="err msg"></span>`}</div>`}).join('')}`;
   $('#zur').onclick=e=>{e.preventDefault();location.hash=''};
+  probe(r.uebung.id,by,TK);
   app.querySelectorAll('.card[data-id]').forEach(c=>{
     const id=Number(c.dataset.id);const msg=c.querySelector('.msg');
     const senden=async(ent,txt)=>{const x=await call('entscheiden',{assetId:id,entscheidung:ent,kommentar:txt});
@@ -164,7 +240,7 @@ async function admin(){
   app.querySelectorAll('select[data-e]').forEach(s=>s.onchange=async()=>{await call('zuweisen',{exerciseId:s.dataset.e,reviewerId:Number(s.value)});admin()});
   app.querySelectorAll('[data-f]').forEach(b=>b.onclick=async()=>{await call('fehlerErledigt',{id:Number(b.dataset.f)});admin()});
 }
-function route(){if(!ME)return;const m=location.hash.match(/^#u\/(.+)$/);if(ME.rolle==='admin')return m?uebung(decodeURIComponent(m[1])):admin();m?uebung(decodeURIComponent(m[1])):liste()}
+function route(){if(!ME)return;if(PROBE_STOP)try{PROBE_STOP()}catch(e){}PROBE_STOP=null;const m=location.hash.match(/^#u\/(.+)$/);if(ME.rolle==='admin')return m?uebung(decodeURIComponent(m[1])):admin();m?uebung(decodeURIComponent(m[1])):liste()}
 window.addEventListener('hashchange',route);
 setInterval(()=>{if(ME&&ME.rolle==='admin'&&document.visibilityState==='visible'&&!location.hash.startsWith('#u/')&&!(TAB==='zuweisen'&&SEL.size))admin()},30000);
 start();
