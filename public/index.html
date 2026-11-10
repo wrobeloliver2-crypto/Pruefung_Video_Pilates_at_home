@@ -101,7 +101,7 @@ async function uebung(id){
     ${i.hinweis?`<p class="mute">Bekannter Hinweis: ${esc(i.hinweis)}</p>`:''}
     ${a==='video'?'<p class="mute">Das Video wird als Ganzes geprüft: Hinweg und Rückwärtslauf zusammen, so wie es im Programm läuft. Die Entscheidung gilt für beides.</p>':''}
     ${medium(a,i)}
-    ${i.gesperrt?'':`<div class="row" style="margin-top:10px"><button class="pri ok-btn">OK</button><span class="mute">oder Änderung beschreiben:</span></div>
+    ${(i.gesperrt||ME.rolle==='admin')?'':`<div class="row" style="margin-top:10px"><button class="pri ok-btn">OK</button><span class="mute">oder Änderung beschreiben:</span></div>
      <textarea placeholder="Was soll geändert werden?">${esc(i.entscheidung==='aenderung'?i.kommentar:'')}</textarea>
      <button class="aend-btn" style="margin-top:8px">Änderung senden</button><span class="err msg"></span>`}</div>`}).join('')}`;
   $('#zur').onclick=e=>{e.preventDefault();location.hash=''};
@@ -126,7 +126,7 @@ async function admin(){
   if(TAB==='fortschritt')body=`<div class="card"><b>Gesamt</b><div class="mute">${voll.length} von ${u.length} Übungen vollständig und prüfbar · ${u.filter(x=>x.ok===4).length} freigegeben</div></div>
    ${je.map(p=>`<div class="card"><div class="row"><b class="grow">${esc(p.name)}</b><span class="mute">${p.fertig}/${p.zug} geprüft · ${p.aend} mit Änderung</span></div><div class="bar"><i style="width:${p.zug?100*p.fertig/p.zug:0}%"></i></div></div>`).join('')}
    <h2>Unvollständige Sets</h2>${u.filter(x=>!x.pruefbar).map(x=>`<div class="card"><b>${esc(x.name)}</b> <span class="mute">${x.vorhanden}/4 Inhalte</span></div>`).join('')||'<p class="mute">Alle Übungen vollständig.</p>'}`;
-  if(TAB==='zuweisen')body=`<p class="mute">Nur vollständige Übungen können geprüft werden.</p>`+u.map(x=>`<div class="card"><div class="row"><div class="grow"><b>${esc(x.name)}</b> <span class="mute">${x.vorhanden}/4</span></div>
+  if(TAB==='zuweisen')body=`<p class="mute">Nur vollständige Übungen können geprüft werden.</p>`+u.map(x=>`<div class="card"><div class="row"><div class="grow"><b>${esc(x.name)}</b> <span class="mute">${x.vorhanden}/4</span>${x.pruefbar?` · <a href="#u/${esc(x.id)}">ansehen</a>`:''}</div>
     <select data-e="${esc(x.id)}" style="width:auto"><option value="0">nicht zugewiesen</option>${r.pruefer.map(p=>`<option value="${p.id}" ${x.reviewer_id===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div></div>`).join('');
   if(TAB==='aenderung')body=r.aenderungen.map(a=>`<div class="card"><b>${esc(a.uebung)}</b> · ${ART[a.art]||esc(a.art)} v${a.version}<div>${esc(a.kommentar)}</div><div class="mute">${esc(a.pruefer)} · ${new Date(a.zeitstempel).toLocaleString('de-DE')}</div></div>`).join('')||'<p class="mute">Keine offenen Änderungswünsche.</p>';
   if(TAB==='fehler')body=r.fehler.map(f=>`<div class="card"><div class="row"><b class="grow">${esc(f.art)}</b><button data-f="${f.id}">erledigt</button></div><div class="mute">${new Date(f.zeitpunkt).toLocaleString('de-DE')} ${esc(f.exercise_id||'')}</div><div>${esc(f.details||'')}</div></div>`).join('')||'<p class="mute">Keine offenen Fehler.</p>';
@@ -135,9 +135,9 @@ async function admin(){
   app.querySelectorAll('select[data-e]').forEach(s=>s.onchange=async()=>{await call('zuweisen',{exerciseId:s.dataset.e,reviewerId:Number(s.value)});admin()});
   app.querySelectorAll('[data-f]').forEach(b=>b.onclick=async()=>{await call('fehlerErledigt',{id:Number(b.dataset.f)});admin()});
 }
-function route(){if(!ME)return;if(ME.rolle==='admin')return admin();const m=location.hash.match(/^#u\/(.+)$/);m?uebung(decodeURIComponent(m[1])):liste()}
+function route(){if(!ME)return;const m=location.hash.match(/^#u\/(.+)$/);if(ME.rolle==='admin')return m?uebung(decodeURIComponent(m[1])):admin();m?uebung(decodeURIComponent(m[1])):liste()}
 window.addEventListener('hashchange',route);
-setInterval(()=>{if(ME&&ME.rolle==='admin'&&document.visibilityState==='visible')admin()},30000);
+setInterval(()=>{if(ME&&ME.rolle==='admin'&&document.visibilityState==='visible'&&!location.hash.startsWith('#u/'))admin()},30000);
 start();
 </script>
 </body>
