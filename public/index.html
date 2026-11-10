@@ -50,7 +50,7 @@ async function call(action,data){
 }
 const MODUS={Matte:'Matte',Stand:'Stehend',Reformer:'Reformer'};
 const mtag=m=>m?`<span class="tag mo mo-${esc(m)}">${esc(MODUS[m]||m)}</span>`:'';
-const ART={bild_start:'Bild Start',bild_ende:'Bild Ende',video:'Video',voice:'Voice'};
+const ART={bild_start:'Bild Start',bild_ende:'Bild Ende',video:'Video',voice:'Voice',zaehlen:'Zählen'};
 function fehlerSeite(txt){app.innerHTML=`<h1>Prüfung</h1><div class="card"><p>${esc(txt)}</p><p class="mute">Bitte über die Kachel „Prüfung“ im Portal öffnen. Der Fehler wurde gemeldet.</p></div>`}
 async function start(){
   if(!TOKEN){await call('fehlerMelden',{art:'kein_zugang',details:'ohne Portal-Anmeldung geöffnet'});return fehlerSeite('Kein Zugang.')}
@@ -62,15 +62,16 @@ async function start(){
 // ───────── Prüferin ─────────
 async function liste(){
   const r=await call('liste');if(r.error)return fehlerSeite('Die Liste lässt sich nicht laden.');
-  const u=r.uebungen;const fertig=u.filter(x=>x.ok===4).length;
+  const u=r.uebungen;const fertig=u.filter(x=>x.ok===5).length;
   app.innerHTML=`<h1>Hallo ${esc(ME.name)}</h1><p class="mute">${fertig} von ${u.length} Übungen vollständig freigegeben</p>
   <div class="bar"><i style="width:${u.length?100*fertig/u.length:0}%"></i></div>
   ${u.length?'':'<div class="card">Noch nichts zur Prüfung zugewiesen.</div>'}
   ${u.map(x=>`<a class="li card" href="#u/${esc(x.id)}"><div class="row"><div class="grow"><b>${esc(x.name)}</b><div class="row" style="gap:6px;margin-top:2px">${mtag(x.modus)}<span class="mute">${esc(x.phase||'')}</span></div></div>
-   <span class="tag ok">${x.ok}/4 OK</span>${x.aenderung?`<span class="tag aend">${x.aenderung} Änderung</span>`:''}</div></a>`).join('')}`;
+   <span class="tag ok">${x.ok}/5 OK</span>${x.aenderung?`<span class="tag aend">${x.aenderung} Änderung</span>`:''}</div></a>`).join('')}`;
 }
 const LBL_PP='▶ Abspielen (vor und zurück)',LBL_LOOP='▶ Abspielen (Rücklauf ist im Video enthalten)';
 function medium(a,i){
+  if(a==='zaehlen'){const t=window.TKC;return t&&t.sek?`<p>Prüfe im Probelauf oben: Zählt die Stimme im richtigen Moment mit, stimmt die Anzahl, und passt das Tempo der Bewegung zum Takt? Vorgabe: <b>${t.text}</b>, ${String(t.sek).replace('.',',')} Sekunden je Wiederholung.</p>`:`<p>Für diese Übung gibt es keinen Zähltakt${t?' ('+esc(t.text)+')':''}. Prüfe im Probelauf, ob Dauer und Ablauf zur Bewegung passen.</p>`}
   if(!i.im_speicher)return'<div class="platz">Medium ist noch nicht im Prüfspeicher</div>';
   if(!i.url)return'<div class="platz">Medium lässt sich gerade nicht laden</div>';
   const u=esc(i.url);
@@ -112,7 +113,7 @@ function probeKarte(by,t){
    ${z?`<div class="row" style="margin-top:10px"><label>Wiederholungen <input type="number" id="pr" min="1" max="30" value="${t.reps}" style="width:80px"></label>
     <label>Sekunden je Wiederholung <input type="number" id="ps" min="2" max="30" step="0.5" value="${String(t.sek)}" style="width:80px"></label>
     <span class="mute">Standard: ${t.reps} × ${String(t.sek).replace('.',',')} s</span></div>
-   <button id="pnote" style="margin-top:8px">Diese Werte als Änderungswunsch beim Video eintragen</button>`:''}</div>`;
+   <button id="pnote" style="margin-top:8px">Diese Werte als Änderungswunsch bei „Zählen“ eintragen</button>`:''}</div>`;
 }
 async function probe(id,by,t){
   const go=$('#pgo');if(!go)return;
@@ -130,7 +131,7 @@ async function probe(id,by,t){
   const pf=$('#pfit');if(pf)pf.onclick=()=>{const q=zyk()/sek();tr.value=Math.min(1.5,Math.max(0.5,Math.round(q*20)/20));setRate()};
   ['#pr','#ps'].forEach(q=>{const e=$(q);if(e)e.oninput=info});
   const pn=$('#pnote');if(pn)pn.onclick=()=>{
-    const ta=app.querySelector('.card[data-id] textarea');const c=[...app.querySelectorAll('.card[data-id]')].find(x=>x.querySelector('video'));const tx=c&&c.querySelector('textarea');
+    const c=app.querySelector('.card[data-art="zaehlen"]');const tx=c&&c.querySelector('textarea');
     if(tx){tx.value=`Takt: ${reps()} Wiederholungen, ${String(sek()).replace('.',',')} Sekunden je Wiederholung; Bewegung im Tempo ${rate().toFixed(2).replace('.',',')}×.`;tx.scrollIntoView({block:'center'});tx.focus()}};
   let st=null,ZA=null;
   if(window.ZA_URL){ZA={};for(const k in window.ZA_URL){const a=new Audio(window.ZA_URL[k]);a.preload='auto';ZA[k]=a}}
@@ -169,13 +170,13 @@ async function probe(id,by,t){
 }
 async function uebung(id){
   const r=await call('uebung',{id});if(r.error)return fehlerSeite('Die Übung lässt sich nicht laden.');
-  const order=['bild_start','bild_ende','video','voice'];
+  const order=['bild_start','bild_ende','video','voice','zaehlen'];
   const by=Object.fromEntries(r.inhalte.map(i=>[i.art,i]));
-  const TK=await takt(r.uebung.id);window.ZA_URL=r.zaehl||null;
+  const TK=await takt(r.uebung.id);window.ZA_URL=r.zaehl||null;window.TKC=TK;
   app.innerHTML=`<p><a href="#" id="zur">← Übersicht</a></p><h1>${esc(r.uebung.name)}</h1><p class="row" style="gap:6px">${mtag(r.uebung.modus)}<span class="mute">${esc(r.uebung.phase||'')}</span></p>
   ${probeKarte(by,TK)}
   ${order.map(a=>{const i=by[a];if(!i)return`<div class="card"><b>${ART[a]}</b><div class="platz">fehlt noch</div></div>`;
-   return`<div class="card" data-id="${i.id}"><div class="row"><b class="grow">${ART[a]} <span class="mute">v${i.version}</span></b>
+   return`<div class="card" data-id="${i.id}" data-art="${a}"><div class="row"><b class="grow">${ART[a]} <span class="mute">v${i.version}</span></b>
     ${i.entscheidung==='ok'?'<span class="tag ok">OK · gesperrt</span>':i.entscheidung==='aenderung'?'<span class="tag aend">Änderung gewünscht</span>':''}</div>
     ${i.hinweis?`<p class="mute">Bekannter Hinweis: ${esc(i.hinweis)}</p>`:''}
     ${a==='video'?(i.video_mit_rueck?'<p class="mute">Dieses Video enthält den Rücklauf schon (Hinweg und Rückweg in einer Datei). Es wird als Ganzes geprüft; die Entscheidung gilt für beides.</p>':'<p class="mute">Das Video wird als Ganzes geprüft: Hinweg und Rückwärtslauf zusammen, so wie es im Programm läuft. Die Entscheidung gilt für beides.</p>'):''}
@@ -200,7 +201,7 @@ let TAB='fortschritt';let FILTER='alle';let BULK='';const SEL=new Set();
 async function admin(){
   const r=await call('adminUebersicht');if(r.error)return fehlerSeite('Die Übersicht lässt sich nicht laden.');
   const u=r.uebungen;const voll=u.filter(x=>x.pruefbar);
-  const je=r.pruefer.map(p=>{const z=u.filter(x=>x.reviewer_id===p.id);return{name:p.name,zug:z.length,fertig:z.filter(x=>x.ok===4).length,aend:z.filter(x=>x.aenderung>0).length}});
+  const je=r.pruefer.map(p=>{const z=u.filter(x=>x.reviewer_id===p.id);return{name:p.name,zug:z.length,fertig:z.filter(x=>x.ok===5).length,aend:z.filter(x=>x.aenderung>0).length}});
   const tabs=[['fortschritt','Fortschritt'],['zuweisen','Aufträge'],['aenderung',`Änderungen (${r.aenderungen.length})`],['fehler',`Fehler (${r.fehler.length})`]];
   let body='';
   if(TAB==='fortschritt'){
@@ -208,9 +209,9 @@ async function admin(){
     const chips=x=>`<span class="tag ok">✓ Bild Start</span><span class="tag ok">✓ Bild Ende</span>`+(x.video_da?`<span class="tag ok">✓ Video</span>`:`<span class="tag err">✗ Video</span>`)+(x.voice_da?`<span class="tag ok">✓ Voice</span>`:`<span class="tag err">✗ Voice</span>`);
     const karte=x=>`<div class="card"><div class="row"><b class="grow">${esc(x.name)}</b>${mtag(x.modus)}</div><div class="row" style="margin-top:6px">${chips(x)}</div><div class="mute" style="margin-top:6px">Video: ${esc(x.video_status||'–')} · Voice: ${esc(x.voice_status||'–')}</div></div>`;
     body=`<div class="card"><b>Gesamt (${u.length} Übungen)</b>
-     <div class="mute">${prod.length} fertig produziert (Bild, Video und Voice) · ${voll.length} davon im Prüfspeicher und prüfbar · ${u.filter(x=>x.ok===4).length} freigegeben</div>
+     <div class="mute">${prod.length} fertig produziert (Bild, Video und Voice) · ${voll.length} davon im Prüfspeicher und prüfbar · ${u.filter(x=>x.ok===5).length} freigegeben</div>
      <div class="bar" style="margin-top:8px"><i style="width:${u.length?100*prod.length/u.length:0}%"></i></div>
-     ${['Matte','Stand','Reformer'].map(m=>{const g=u.filter(x=>x.modus===m);return g.length?`<div class="row" style="margin-top:8px">${mtag(m)}<span class="mute">${g.length} Übungen · ${g.filter(x=>x.video_da&&x.voice_da).length} fertig produziert · ${g.filter(x=>x.pruefbar).length} im Prüfspeicher · ${g.filter(x=>x.ok===4).length} freigegeben</span></div>`:''}).join('')}</div>
+     ${['Matte','Stand','Reformer'].map(m=>{const g=u.filter(x=>x.modus===m);return g.length?`<div class="row" style="margin-top:8px">${mtag(m)}<span class="mute">${g.length} Übungen · ${g.filter(x=>x.video_da&&x.voice_da).length} fertig produziert · ${g.filter(x=>x.pruefbar).length} im Prüfspeicher · ${g.filter(x=>x.ok===5).length} freigegeben</span></div>`:''}).join('')}</div>
      ${je.map(p=>`<div class="card"><div class="row"><b class="grow">${esc(p.name)}</b><span class="mute">${p.fertig}/${p.zug} geprüft · ${p.aend} mit Änderung</span></div><div class="bar"><i style="width:${p.zug?100*p.fertig/p.zug:0}%"></i></div></div>`).join('')}
      <h2>Fertig produziert, noch nicht im Prüfspeicher (${bereit.length})</h2><p class="mute">Diese Übungen müssen nur noch in den Prüfspeicher hochgeladen werden.</p>${bereit.map(karte).join('')||'<p class="mute">Keine.</p>'}
      <h2>Produktion noch offen (${offen.length})</h2><p class="mute">Grün = vorhanden, rot = fehlt noch. Stand laut Bestandsliste.</p>${offen.map(karte).join('')||'<p class="mute">Keine.</p>'}`;}
