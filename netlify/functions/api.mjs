@@ -71,6 +71,7 @@ async function statusJeUebung(nurReviewer) {
       COALESCE(v.n,0) AS vorhanden,
       asg.reviewer_id, rv.name AS pruefer,
       COALESCE(count(a.id) FILTER (WHERE a.art IN ('bild_start','bild_ende','video','voice')),0) AS inhalte,
+      COALESCE(array_agg(DISTINCT a.art) FILTER (WHERE a.art IN ('bild_start','bild_ende','video','voice')), ARRAY[]::text[]) AS arten,
       count(en.asset_id) FILTER (WHERE en.entscheidung='ok') AS ok,
       count(en.asset_id) FILTER (WHERE en.entscheidung='aenderung') AS aenderung
     FROM exercise e

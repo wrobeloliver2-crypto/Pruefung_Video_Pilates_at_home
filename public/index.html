@@ -23,6 +23,7 @@ select,textarea{width:100%;border:1px solid var(--line);background:var(--bg);bor
 textarea{min-height:84px}
 .tag{display:inline-block;border-radius:999px;padding:2px 10px;font-size:13px;border:1px solid var(--line)}
 .ok{color:var(--ok);border-color:var(--ok)}.aend{color:var(--warn);border-color:var(--warn)}.err{color:var(--err)}
+.tag.err{border-color:var(--err)}
 .bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}.bar>i{display:block;height:100%;background:var(--ok)}
 .medien{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
 .platz{border:1px dashed var(--line);border-radius:10px;padding:24px 10px;text-align:center;color:var(--mute);font-size:14px}
@@ -125,7 +126,7 @@ async function admin(){
   let body='';
   if(TAB==='fortschritt')body=`<div class="card"><b>Gesamt</b><div class="mute">${voll.length} von ${u.length} Übungen vollständig und prüfbar · ${u.filter(x=>x.ok===4).length} freigegeben</div></div>
    ${je.map(p=>`<div class="card"><div class="row"><b class="grow">${esc(p.name)}</b><span class="mute">${p.fertig}/${p.zug} geprüft · ${p.aend} mit Änderung</span></div><div class="bar"><i style="width:${p.zug?100*p.fertig/p.zug:0}%"></i></div></div>`).join('')}
-   <h2>Unvollständige Sets</h2>${u.filter(x=>!x.pruefbar).map(x=>`<div class="card"><b>${esc(x.name)}</b> <span class="mute">${x.vorhanden}/4 Inhalte</span></div>`).join('')||'<p class="mute">Alle Übungen vollständig.</p>'}`;
+   <h2>Unvollständige Sets</h2><p class="mute">Grün = vorhanden, rot = fehlt noch.</p>${u.filter(x=>!x.pruefbar).map(x=>`<div class="card"><div class="row"><b class="grow">${esc(x.name)}</b><span class="mute">${x.vorhanden}/4</span></div><div class="row" style="margin-top:6px">${Object.keys(ART).map(k=>(x.arten||[]).includes(k)?`<span class="tag ok">✓ ${ART[k]}</span>`:`<span class="tag err">✗ ${ART[k]}</span>`).join('')}</div></div>`).join('')||'<p class="mute">Alle Übungen vollständig.</p>'}`;
   if(TAB==='zuweisen')body=`<p class="mute">Hier stehen nur Übungen, die prüfbar sind (Bild Start, Bild Ende, Video und Voice vorhanden).</p>`+(voll.length?'':'<p class="mute">Noch keine Übung vollständig.</p>')+voll.map(x=>`<div class="card"><div class="row"><div class="grow"><b>${esc(x.name)}</b> <span class="mute"> · <a href="#u/${esc(x.id)}">ansehen</a></span></div>
     <select data-e="${esc(x.id)}" style="width:auto"><option value="0">nicht zugewiesen</option>${r.pruefer.map(p=>`<option value="${p.id}" ${x.reviewer_id===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div></div>`).join('');
   if(TAB==='aenderung')body=r.aenderungen.map(a=>`<div class="card"><b>${esc(a.uebung)}</b> · ${ART[a.art]||esc(a.art)} v${a.version}<div>${esc(a.kommentar)}</div><div class="mute">${esc(a.pruefer)} · ${new Date(a.zeitstempel).toLocaleString('de-DE')}</div></div>`).join('')||'<p class="mute">Keine offenen Änderungswünsche.</p>';
