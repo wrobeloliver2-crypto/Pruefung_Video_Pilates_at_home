@@ -24,9 +24,11 @@ textarea{min-height:84px}
 .tag{display:inline-block;border-radius:999px;padding:2px 10px;font-size:13px;border:1px solid var(--line)}
 .ok{color:var(--ok);border-color:var(--ok)}.aend{color:var(--warn);border-color:var(--warn)}.err{color:var(--err)}
 .bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}.bar>i{display:block;height:100%;background:var(--ok)}
+.medien{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
 .platz{border:1px dashed var(--line);border-radius:10px;padding:24px 10px;text-align:center;color:var(--mute);font-size:14px}
 a.li{display:block;text-decoration:none;color:inherit}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.tabs button[aria-pressed=true]{background:var(--accent);color:var(--on);border-color:var(--accent)}
+.scroll{overflow-x:auto}
 </style>
 </head>
 <body>
@@ -50,6 +52,7 @@ async function start(){
   if(me.error){return fehlerSeite('Der Dienst antwortet gerade nicht.')}
   ME=me;ME.rolle==='admin'?admin():liste();
 }
+// ───────── Prüferin ─────────
 async function liste(){
   const r=await call('liste');if(r.error)return fehlerSeite('Die Liste lässt sich nicht laden.');
   const u=r.uebungen;const fertig=u.filter(x=>x.ok===4).length;
@@ -68,6 +71,7 @@ async function uebung(id){
    return`<div class="card" data-id="${i.id}"><div class="row"><b class="grow">${ART[a]} <span class="mute">v${i.version}</span></b>
     ${i.entscheidung==='ok'?'<span class="tag ok">OK · gesperrt</span>':i.entscheidung==='aenderung'?'<span class="tag aend">Änderung gewünscht</span>':''}</div>
     ${i.hinweis?`<p class="mute">Bekannter Hinweis: ${esc(i.hinweis)}</p>`:''}
+    ${a==='video'?'<p class="mute">Das Video wird als Ganzes geprüft: Hinweg und Rückwärtslauf zusammen, so wie es im Programm läuft. Die Entscheidung gilt für beides.</p>':''}
     <div class="platz">${i.im_speicher?'Medium wird geladen …':'Medium ist noch nicht im Prüfspeicher'}</div>
     ${i.gesperrt?'':`<div class="row" style="margin-top:10px"><button class="pri ok-btn">OK</button><span class="mute">oder Änderung beschreiben:</span></div>
      <textarea placeholder="Was soll geändert werden?">${esc(i.entscheidung==='aenderung'?i.kommentar:'')}</textarea>
@@ -82,6 +86,7 @@ async function uebung(id){
     const ae=c.querySelector('.aend-btn');if(ae)ae.onclick=()=>senden('aenderung',c.querySelector('textarea').value);
   });
 }
+// ───────── Admin ─────────
 let TAB='fortschritt';
 async function admin(){
   const r=await call('adminUebersicht');if(r.error)return fehlerSeite('Die Übersicht lässt sich nicht laden.');
