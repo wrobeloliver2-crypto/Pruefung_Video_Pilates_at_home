@@ -29,6 +29,9 @@ textarea{min-height:84px}
 a.li{display:block;text-decoration:none;color:inherit}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.tabs button[aria-pressed=true]{background:var(--accent);color:var(--on);border-color:var(--accent)}
 .scroll{overflow-x:auto}
+.med{width:100%;max-height:70vh;border-radius:10px;background:#000;object-fit:contain;display:block}
+img.med{background:var(--line)}audio{width:100%}
+.pl{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.pl button[aria-pressed=true]{background:var(--accent);color:var(--on);border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -62,6 +65,31 @@ async function liste(){
   ${u.map(x=>`<a class="li card" href="#u/${esc(x.id)}"><div class="row"><div class="grow"><b>${esc(x.name)}</b><div class="mute">${esc(x.modus||'')} ${esc(x.phase||'')}</div></div>
    <span class="tag ok">${x.ok}/4 OK</span>${x.aenderung?`<span class="tag aend">${x.aenderung} Änderung</span>`:''}</div></a>`).join('')}`;
 }
+function medium(a,i){
+  if(!i.im_speicher)return'<div class="platz">Medium ist noch nicht im Prüfspeicher</div>';
+  if(!i.url)return'<div class="platz">Medium lässt sich gerade nicht laden</div>';
+  const u=esc(i.url);
+  if(a==='bild_start'||a==='bild_ende')return`<img class="med" src="${u}" alt="${ART[a]}">`;
+  if(a==='voice')return`<audio controls preload="none" src="${u}"></audio>`;
+  return`<video class="med" muted playsinline preload="auto" src="${u}"></video>
+   <div class="pl"><button class="pp-play">▶ Abspielen (vor und zurück)</button><button class="pp-sp" data-s="1" aria-pressed="true">1×</button><button class="pp-sp" data-s="0.5" aria-pressed="false">0,5×</button></div>`;
+}
+function pingpong(card){
+  const v=card.querySelector('video');if(!v)return;
+  const play=card.querySelector('.pp-play');let speed=1,state='stop',last=0;
+  const stop=()=>{state='stop';v.pause();play.textContent='▶ Abspielen (vor und zurück)'};
+  const vor=()=>{state='vor';v.playbackRate=speed;v.play().catch(()=>stop())};
+  v.addEventListener('ended',()=>{if(state!=='vor')return;state='rueck';v.pause();last=performance.now();requestAnimationFrame(tick)});
+  function tick(now){
+    if(state!=='rueck')return;
+    const dt=(now-last)/1000;last=now;
+    v.currentTime=Math.max(0,v.currentTime-dt*speed);
+    if(v.currentTime<=0.02){v.currentTime=0;vor();return}
+    requestAnimationFrame(tick);
+  }
+  play.onclick=()=>{if(state==='stop'){v.currentTime=0;play.textContent='■ Stopp';vor()}else stop()};
+  card.querySelectorAll('.pp-sp').forEach(b=>b.onclick=()=>{speed=Number(b.dataset.s);v.playbackRate=speed;card.querySelectorAll('.pp-sp').forEach(x=>x.setAttribute('aria-pressed',x===b))});
+}
 async function uebung(id){
   const r=await call('uebung',{id});if(r.error)return fehlerSeite('Die Übung lässt sich nicht laden.');
   const order=['bild_start','bild_ende','video','voice'];
@@ -72,7 +100,7 @@ async function uebung(id){
     ${i.entscheidung==='ok'?'<span class="tag ok">OK · gesperrt</span>':i.entscheidung==='aenderung'?'<span class="tag aend">Änderung gewünscht</span>':''}</div>
     ${i.hinweis?`<p class="mute">Bekannter Hinweis: ${esc(i.hinweis)}</p>`:''}
     ${a==='video'?'<p class="mute">Das Video wird als Ganzes geprüft: Hinweg und Rückwärtslauf zusammen, so wie es im Programm läuft. Die Entscheidung gilt für beides.</p>':''}
-    <div class="platz">${i.im_speicher?'Medium wird geladen …':'Medium ist noch nicht im Prüfspeicher'}</div>
+    ${medium(a,i)}
     ${i.gesperrt?'':`<div class="row" style="margin-top:10px"><button class="pri ok-btn">OK</button><span class="mute">oder Änderung beschreiben:</span></div>
      <textarea placeholder="Was soll geändert werden?">${esc(i.entscheidung==='aenderung'?i.kommentar:'')}</textarea>
      <button class="aend-btn" style="margin-top:8px">Änderung senden</button><span class="err msg"></span>`}</div>`}).join('')}`;
@@ -82,6 +110,7 @@ async function uebung(id){
     const senden=async(ent,txt)=>{const x=await call('entscheiden',{assetId:id,entscheidung:ent,kommentar:txt});
       if(x.error){msg.textContent=x.error==='text_noetig'?' Bitte Text eingeben.':' Speichern nicht möglich.';if(x.error!=='text_noetig')call('fehlerMelden',{art:'speicher_fehler',details:'entscheiden '+x.error});return}
       route()};
+    pingpong(c);
     const ok=c.querySelector('.ok-btn');if(ok)ok.onclick=()=>senden('ok');
     const ae=c.querySelector('.aend-btn');if(ae)ae.onclick=()=>senden('aenderung',c.querySelector('textarea').value);
   });
