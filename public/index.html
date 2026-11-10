@@ -119,7 +119,7 @@ async function uebung(id){
   });
 }
 // ───────── Admin ─────────
-let TAB='fortschritt';
+let TAB='fortschritt';let FILTER='alle';let BULK='';const SEL=new Set();
 async function admin(){
   const r=await call('adminUebersicht');if(r.error)return fehlerSeite('Die Übersicht lässt sich nicht laden.');
   const u=r.uebungen;const voll=u.filter(x=>x.pruefbar);
@@ -137,18 +137,35 @@ async function admin(){
      ${je.map(p=>`<div class="card"><div class="row"><b class="grow">${esc(p.name)}</b><span class="mute">${p.fertig}/${p.zug} geprüft · ${p.aend} mit Änderung</span></div><div class="bar"><i style="width:${p.zug?100*p.fertig/p.zug:0}%"></i></div></div>`).join('')}
      <h2>Fertig produziert, noch nicht im Prüfspeicher (${bereit.length})</h2><p class="mute">Diese Übungen müssen nur noch in den Prüfspeicher hochgeladen werden.</p>${bereit.map(karte).join('')||'<p class="mute">Keine.</p>'}
      <h2>Produktion noch offen (${offen.length})</h2><p class="mute">Grün = vorhanden, rot = fehlt noch. Stand laut Bestandsliste.</p>${offen.map(karte).join('')||'<p class="mute">Keine.</p>'}`;}
-  if(TAB==='zuweisen')body=`<p class="mute">Hier stehen nur Übungen, die prüfbar sind (Bild Start, Bild Ende, Video und Voice vorhanden).</p>`+(voll.length?'':'<p class="mute">Noch keine Übung vollständig.</p>')+voll.map(x=>`<div class="card"><div class="row"><div class="grow"><b>${esc(x.name)}</b> ${mtag(x.modus)} <span class="mute"> · <a href="#u/${esc(x.id)}">ansehen</a></span></div>
+  if(TAB==='zuweisen'){
+    const sicht=voll.filter(x=>FILTER==='alle'||x.modus===FILTER);
+    const anz=m=>m==='alle'?voll.length:voll.filter(x=>x.modus===m).length;
+    const alleSel=sicht.length&&sicht.every(x=>SEL.has(x.id));
+    body=`<p class="mute">Hier stehen nur Übungen, die prüfbar sind (Bild Start, Bild Ende, Video und Voice vorhanden).</p>
+    <div class="tabs">${[['alle','Alle'],['Matte','Matte'],['Stand','Stehend'],['Reformer','Reformer']].map(([k,l])=>`<button data-fl="${k}" aria-pressed="${FILTER===k}">${l} (${anz(k)})</button>`).join('')}</div>
+    <div class="card row" style="position:sticky;top:0;z-index:2">
+      <label class="row" style="gap:6px"><input type="checkbox" id="selall" ${alleSel?'checked':''}> Alle ${sicht.length} sichtbaren</label>
+      <span class="mute grow">${SEL.size} ausgewählt</span>
+      <select id="bulk" style="width:auto"><option value="">Zuweisen an …</option>${r.pruefer.map(p=>`<option value="${p.id}" ${BULK===String(p.id)?'selected':''}>${esc(p.name)}</option>`).join('')}<option value="0" ${BULK==='0'?'selected':''}>Zuweisung aufheben</option></select>
+      <button class="pri" id="bulkgo" ${SEL.size&&BULK!==''?'':'disabled'}>Auf ${SEL.size} anwenden</button></div>`
+    +(sicht.length?'':'<p class="mute">Keine Übung in dieser Auswahl.</p>')+sicht.map(x=>`<div class="card"><div class="row"><input type="checkbox" data-sel="${esc(x.id)}" ${SEL.has(x.id)?'checked':''} style="width:22px;height:22px"><div class="grow"><b>${esc(x.name)}</b> ${mtag(x.modus)} <span class="mute"> · <a href="#u/${esc(x.id)}">ansehen</a></span></div>
     <select data-e="${esc(x.id)}" style="width:auto"><option value="0">nicht zugewiesen</option>${r.pruefer.map(p=>`<option value="${p.id}" ${x.reviewer_id===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div></div>`).join('');
+  }
   if(TAB==='aenderung')body=r.aenderungen.map(a=>`<div class="card"><b>${esc(a.uebung)}</b> · ${ART[a.art]||esc(a.art)} v${a.version}<div>${esc(a.kommentar)}</div><div class="mute">${esc(a.pruefer)} · ${new Date(a.zeitstempel).toLocaleString('de-DE')}</div></div>`).join('')||'<p class="mute">Keine offenen Änderungswünsche.</p>';
   if(TAB==='fehler')body=r.fehler.map(f=>`<div class="card"><div class="row"><b class="grow">${esc(f.art)}</b><button data-f="${f.id}">erledigt</button></div><div class="mute">${new Date(f.zeitpunkt).toLocaleString('de-DE')} ${esc(f.exercise_id||'')}</div><div>${esc(f.details||'')}</div></div>`).join('')||'<p class="mute">Keine offenen Fehler.</p>';
   app.innerHTML=`<h1>Prüfung · Admin</h1><div class="tabs">${tabs.map(([k,l])=>`<button data-t="${k}" aria-pressed="${TAB===k}">${l}</button>`).join('')}</div>${body}`;
   app.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;admin()});
+  app.querySelectorAll('[data-fl]').forEach(b=>b.onclick=()=>{FILTER=b.dataset.fl;admin()});
+  app.querySelectorAll('input[data-sel]').forEach(c=>c.onchange=()=>{c.checked?SEL.add(c.dataset.sel):SEL.delete(c.dataset.sel);admin()});
+  const sa=$('#selall');if(sa)sa.onchange=()=>{voll.filter(x=>FILTER==='alle'||x.modus===FILTER).forEach(x=>sa.checked?SEL.add(x.id):SEL.delete(x.id));admin()};
+  const bk=$('#bulk');if(bk)bk.onchange=()=>{BULK=bk.value;admin()};
+  const go=$('#bulkgo');if(go)go.onclick=async()=>{go.disabled=true;go.textContent='Speichere …';for(const id of [...SEL]){await call('zuweisen',{exerciseId:id,reviewerId:Number(BULK)})}SEL.clear();BULK='';admin()};
   app.querySelectorAll('select[data-e]').forEach(s=>s.onchange=async()=>{await call('zuweisen',{exerciseId:s.dataset.e,reviewerId:Number(s.value)});admin()});
   app.querySelectorAll('[data-f]').forEach(b=>b.onclick=async()=>{await call('fehlerErledigt',{id:Number(b.dataset.f)});admin()});
 }
 function route(){if(!ME)return;const m=location.hash.match(/^#u\/(.+)$/);if(ME.rolle==='admin')return m?uebung(decodeURIComponent(m[1])):admin();m?uebung(decodeURIComponent(m[1])):liste()}
 window.addEventListener('hashchange',route);
-setInterval(()=>{if(ME&&ME.rolle==='admin'&&document.visibilityState==='visible'&&!location.hash.startsWith('#u/'))admin()},30000);
+setInterval(()=>{if(ME&&ME.rolle==='admin'&&document.visibilityState==='visible'&&!location.hash.startsWith('#u/')&&!(TAB==='zuweisen'&&SEL.size))admin()},30000);
 start();
 </script>
 </body>
