@@ -68,19 +68,20 @@ async function liste(){
   ${u.map(x=>`<a class="li card" href="#u/${esc(x.id)}"><div class="row"><div class="grow"><b>${esc(x.name)}</b><div class="row" style="gap:6px;margin-top:2px">${mtag(x.modus)}<span class="mute">${esc(x.phase||'')}</span></div></div>
    <span class="tag ok">${x.ok}/4 OK</span>${x.aenderung?`<span class="tag aend">${x.aenderung} Änderung</span>`:''}</div></a>`).join('')}`;
 }
+const LBL_PP='▶ Abspielen (vor und zurück)',LBL_LOOP='▶ Abspielen (Rücklauf ist im Video enthalten)';
 function medium(a,i){
   if(!i.im_speicher)return'<div class="platz">Medium ist noch nicht im Prüfspeicher</div>';
   if(!i.url)return'<div class="platz">Medium lässt sich gerade nicht laden</div>';
   const u=esc(i.url);
   if(a==='bild_start'||a==='bild_ende')return`<img class="med" src="${u}" alt="${ART[a]}">`;
   if(a==='voice')return`<audio controls preload="none" src="${u}"></audio>`;
-  return`<video class="med" muted playsinline preload="auto" src="${u}"></video>
-   <div class="pl"><button class="pp-play">▶ Abspielen (vor und zurück)</button><button class="pp-sp" data-s="1" aria-pressed="true">1×</button><button class="pp-sp" data-s="0.5" aria-pressed="false">0,5×</button></div>`;
+  return`<video class="med" muted playsinline preload="auto" ${i.video_mit_rueck?'loop':''} src="${u}"></video>
+   <div class="pl"><button class="pp-play">${i.video_mit_rueck?LBL_LOOP:LBL_PP}</button><button class="pp-sp" data-s="1" aria-pressed="true">1×</button><button class="pp-sp" data-s="0.5" aria-pressed="false">0,5×</button></div>`;
 }
 function pingpong(card){
   const v=card.querySelector('video');if(!v)return;
   const play=card.querySelector('.pp-play');let speed=1,state='stop',last=0;
-  const stop=()=>{state='stop';v.pause();play.textContent='▶ Abspielen (vor und zurück)'};
+  const stop=()=>{state='stop';v.pause();play.textContent=v.loop?LBL_LOOP:LBL_PP};
   const vor=()=>{state='vor';v.playbackRate=speed;v.play().catch(()=>stop())};
   v.addEventListener('ended',()=>{if(state!=='vor')return;state='rueck';v.pause();last=performance.now();requestAnimationFrame(tick)});
   function tick(now){
@@ -102,7 +103,7 @@ async function uebung(id){
    return`<div class="card" data-id="${i.id}"><div class="row"><b class="grow">${ART[a]} <span class="mute">v${i.version}</span></b>
     ${i.entscheidung==='ok'?'<span class="tag ok">OK · gesperrt</span>':i.entscheidung==='aenderung'?'<span class="tag aend">Änderung gewünscht</span>':''}</div>
     ${i.hinweis?`<p class="mute">Bekannter Hinweis: ${esc(i.hinweis)}</p>`:''}
-    ${a==='video'?'<p class="mute">Das Video wird als Ganzes geprüft: Hinweg und Rückwärtslauf zusammen, so wie es im Programm läuft. Die Entscheidung gilt für beides.</p>':''}
+    ${a==='video'?(i.video_mit_rueck?'<p class="mute">Dieses Video enthält den Rücklauf schon (Hinweg und Rückweg in einer Datei). Es wird als Ganzes geprüft; die Entscheidung gilt für beides.</p>':'<p class="mute">Das Video wird als Ganzes geprüft: Hinweg und Rückwärtslauf zusammen, so wie es im Programm läuft. Die Entscheidung gilt für beides.</p>'):''}
     ${medium(a,i)}
     ${(i.gesperrt||ME.rolle==='admin')?'':`<div class="row" style="margin-top:10px"><button class="pri ok-btn">OK</button><span class="mute">oder Änderung beschreiben:</span></div>
      <textarea placeholder="Was soll geändert werden?">${esc(i.entscheidung==='aenderung'?i.kommentar:'')}</textarea>
@@ -148,7 +149,7 @@ async function admin(){
       <span class="mute grow">${SEL.size} ausgewählt</span>
       <select id="bulk" style="width:auto"><option value="">Zuweisen an …</option>${r.pruefer.map(p=>`<option value="${p.id}" ${BULK===String(p.id)?'selected':''}>${esc(p.name)}</option>`).join('')}<option value="0" ${BULK==='0'?'selected':''}>Zuweisung aufheben</option></select>
       <button class="pri" id="bulkgo" ${SEL.size&&BULK!==''?'':'disabled'}>Auf ${SEL.size} anwenden</button></div>`
-    +(sicht.length?'':'<p class="mute">Keine Übung in dieser Auswahl.</p>')+sicht.map(x=>`<div class="card"><div class="row"><input type="checkbox" data-sel="${esc(x.id)}" ${SEL.has(x.id)?'checked':''} style="width:22px;height:22px"><div class="grow"><b>${esc(x.name)}</b> ${mtag(x.modus)} <span class="mute"> · <a href="#u/${esc(x.id)}">ansehen</a></span></div>
+    +(sicht.length?'':'<p class="mute">Keine Übung in dieser Auswahl.</p>')+sicht.map(x=>`<div class="card"><div class="row"><input type="checkbox" data-sel="${esc(x.id)}" ${SEL.has(x.id)?'checked':''} style="width:22px;height:22px">${x.vorschau?`<a href="#u/${esc(x.id)}"><img src="${esc(x.vorschau)}" loading="lazy" alt="Startposition ${esc(x.name)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;display:block"></a>`:'<div style="width:64px;height:64px;border-radius:8px;background:#0001"></div>'}<div class="grow"><b>${esc(x.name)}</b> ${mtag(x.modus)} <span class="mute"> · <a href="#u/${esc(x.id)}">ansehen</a></span></div>
     <select data-e="${esc(x.id)}" style="width:auto"><option value="0">nicht zugewiesen</option>${r.pruefer.map(p=>`<option value="${p.id}" ${x.reviewer_id===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div></div>`).join('');
   }
   if(TAB==='aenderung')body=r.aenderungen.map(a=>`<div class="card"><b>${esc(a.uebung)}</b> · ${ART[a.art]||esc(a.art)} v${a.version}<div>${esc(a.kommentar)}</div><div class="mute">${esc(a.pruefer)} · ${new Date(a.zeitstempel).toLocaleString('de-DE')}</div></div>`).join('')||'<p class="mute">Keine offenen Änderungswünsche.</p>';

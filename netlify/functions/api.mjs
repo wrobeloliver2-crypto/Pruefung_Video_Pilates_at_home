@@ -7,6 +7,7 @@ const sql = neon(process.env.DATABASE_URL);
 const MA_URL = 'https://mitarbeiter-api.netlify.app/.netlify/functions/auth';
 const ARTEN = ['bild_start', 'bild_ende', 'video', 'voice'];
 
+
 // ── Abspiel-Links für den Prüfspeicher (S3-kompatibel, nur Lesen, 1 Stunde gültig) ──
 const BUCKET = 'pruefmedien';
 const REGION = 'eu-central-1';
@@ -67,7 +68,7 @@ async function statusJeUebung(nurReviewer) {
     voll AS (SELECT exercise_id, count(DISTINCT art) FILTER (WHERE art IN ('bild_start','bild_ende','video','voice')) AS n FROM a GROUP BY exercise_id),
     entsch AS (
       SELECT DISTINCT ON (r.asset_id) r.asset_id, r.entscheidung FROM review r ORDER BY r.asset_id, r.zeitstempel DESC)
-    SELECT e.id, e.name, e.modus, e.phase, b.video_status, b.voice_status, COALESCE(b.video_da,false) AS video_da, COALESCE(b.voice_da,false) AS voice_da,
+    SELECT e.id, e.name, e.modus, e.phase, (SELECT a2.storage_key FROM a a2 WHERE a2.exercise_id = e.id AND a2.art = 'bild_start') AS start_key, b.video_status, b.voice_status, COALESCE(b.video_da,false) AS video_da, COALESCE(b.voice_da,false) AS voice_da,
       COALESCE(v.n,0) AS vorhanden,
       asg.reviewer_id, rv.name AS pruefer,
       COALESCE(count(a.id) FILTER (WHERE a.art IN ('bild_start','bild_ende','video','voice')),0) AS inhalte,
@@ -84,7 +85,7 @@ async function statusJeUebung(nurReviewer) {
     ${nurReviewer ? 'WHERE asg.reviewer_id = $1' : ''}
     GROUP BY e.id, e.name, e.modus, e.phase, b.video_status, b.voice_status, b.video_da, b.voice_da, v.n, asg.reviewer_id, rv.name, e.reihenfolge
     ORDER BY e.reihenfolge NULLS LAST, e.name`, nurReviewer ? [nurReviewer] : []);
-  return rows.map(r => ({ ...r, vorhanden: Number(r.vorhanden), inhalte: Number(r.inhalte), ok: Number(r.ok), aenderung: Number(r.aenderung), pruefbar: Number(r.vorhanden) === 4 }));
+  return rows.map(({ start_key, ...r }) => ({ ...r, vorschau: start_key ? lesenUrl(start_key) : null, vorhanden: Number(r.vorhanden), inhalte: Number(r.inhalte), ok: Number(r.ok), aenderung: Number(r.aenderung), pruefbar: Number(r.vorhanden) === 4 }));
 }
 
 export default async (req) => {
@@ -121,7 +122,7 @@ export default async (req) => {
         }
         const ex = (await sql`SELECT id, name, modus, phase FROM exercise WHERE id = ${eid}`)[0];
         if (!ex) return json(404, { error: 'unbekannt' });
-        const assets = await sql.query(`WITH a AS (${NEUESTE}) SELECT a.id, a.art, a.version, a.dateiname, a.hinweis, a.storage_key IS NOT NULL AS im_speicher, a.storage_key,
+        const assets = await sql.query(`WITH a AS (${NEUESTE}) SELECT a.id, a.art, a.version, a.dateiname, a.hinweis, a.video_mit_rueck, a.storage_key IS NOT NULL AS im_speicher, a.storage_key,
           (SELECT entscheidung FROM review r WHERE r.asset_id = a.id ORDER BY zeitstempel DESC LIMIT 1) AS entscheidung,
           (SELECT kommentar FROM review r WHERE r.asset_id = a.id ORDER BY zeitstempel DESC LIMIT 1) AS kommentar,
           EXISTS (SELECT 1 FROM asset_lock l WHERE l.asset_id = a.id) AS gesperrt
